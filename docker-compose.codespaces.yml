@@ -1,0 +1,83 @@
+# Hadoop cluster for Hands-on L4 / Assignment 2, variant for GitHub Codespaces.
+# Image: apache/hadoop:3  (Hadoop 3.3.6, HADOOP_HOME=/opt/hadoop)
+#
+# Why a separate file: inside a Codespace, Docker runs "in Docker" and traffic between
+# containers on a Compose bridge network is dropped, so the DataNodes and the
+# ResourceManager can never reach the NameNode (symptom: endless
+# "Retrying connect to server: namenode/172.18.0.x:8020").
+#
+# This variant puts every service on the host network, so the daemons talk over
+# loopback and never cross a bridge. Host networking means one shared set of ports,
+# so the topology is light: 1 NameNode, 1 DataNode, 1 ResourceManager, 1 NodeManager
+# and the history server, with replication 1. Commands, paths and web UIs are the same
+# as in docker-compose.yml. Codespaces forwards 9870 and 8088 automatically.
+#
+# Use:   docker compose -f docker-compose.codespaces.yml up -d
+# Stop:  docker compose -f docker-compose.codespaces.yml down -v
+
+x-hadoop: &hadoop
+  image: apache/hadoop:3
+  network_mode: host
+  env_file:
+    - ./config
+  # On the host network the service names are not resolved by Docker DNS, so map
+  # them to loopback. Every daemon then binds and connects on 127.0.0.1.
+  extra_hosts:
+    - "namenode:127.0.0.1"
+    - "datanode1:127.0.0.1"
+    - "resourcemanager:127.0.0.1"
+    - "nodemanager1:127.0.0.1"
+    - "historyserver:127.0.0.1"
+  restart: on-failure
+
+x-light:
+  # Overrides for the one-DataNode topology (environment wins over env_file).
+  &light
+  HDFS-SITE.XML_dfs.replication: "1"
+  HDFS-SITE.XML_dfs.namenode.rpc-bind-host: "0.0.0.0"
+  HDFS-SITE.XML_dfs.namenode.http-bind-host: "0.0.0.0"
+  YARN-SITE.XML_yarn.resourcemanager.bind-host: "0.0.0.0"
+  YARN-SITE.XML_yarn.nodemanager.bind-host: "0.0.0.0"
+  MAPRED-SITE.XML_mapreduce.jobhistory.bind-host: "0.0.0.0"
+
+services:
+
+  namenode:
+    <<: *hadoop
+    container_name: namenode
+    command: [ "hdfs", "namenode" ]
+    environment:
+      <<: *light
+      ENSURE_NAMENODE_DIR: "/tmp/hadoop-root/dfs/name"
+
+  datanode1:
+    <<: *hadoop
+    container_name: datanode1
+    command: [ "hdfs", "datanode" ]
+    environment:
+      <<: *light
+    depends_on: [ namenode ]
+
+  resourcemanager:
+    <<: *hadoop
+    container_name: resourcemanager
+    command: [ "yarn", "resourcemanager" ]
+    environment:
+      <<: *light
+    depends_on: [ namenode ]
+
+  nodemanager1:
+    <<: *hadoop
+    container_name: nodemanager1
+    command: [ "yarn", "nodemanager" ]
+    environment:
+      <<: *light
+    depends_on: [ resourcemanager ]
+
+  historyserver:
+    <<: *hadoop
+    container_name: historyserver
+    command: [ "mapred", "historyserver" ]
+    environment:
+      <<: *light
+    depends_on: [ resourcemanager ]
