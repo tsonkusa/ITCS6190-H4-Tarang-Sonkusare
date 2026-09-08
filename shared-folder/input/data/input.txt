@@ -1,1 +1,7 @@
-# Create your own input dataset
+Cloud computing processes data
+Cloud computing stores data
+Hadoop processes big data
+Hadoop processes cloud data
+MapReduce counts words
+MapReduce processes data
+Data processing is useful
